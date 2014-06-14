@@ -1,20 +1,159 @@
 # Reproducible Research: Peer Assessment 1
-
-
+```{r, echo=FALSE}
+library(ggplot2)
+```
 ## Loading and preprocessing the data
-
-
+**1. Load the data**
+**2. Process/transform the data (if necessary) into a format suitable for your analysis**
+```{r}
+data <- read.csv("activity.csv")
+```
 
 ## What is mean total number of steps taken per day?
+For this part of the assignment, you can ignore the missing values in
+the dataset.
 
-
-
+**1. Make a histogram of the total number of steps taken each day**
+```{r}
+dataAggregatedPerDay <- aggregate(list(steps=data$steps),
+                                  list(day = data$date),sum)
+breaksNumber <- length(dataAggregatedPerDay$steps) - 
+        sum(is.na(dataAggregatedPerDay$steps))
+qplot(steps, data=dataAggregatedPerDay, geom="histogram", binwidth=1000)
+```
+** 2. Calculate and report the *mean* and *median* total number of steps taken per day**
+```{r}
+mean.day <- mean(dataAggregatedPerDay$steps,na.rm=TRUE)
+median.day <- median(dataAggregatedPerDay$steps,na.rm=TRUE)
+```
+After making the appropriated calculation we can see that the mean and median 
+values are ***`r as.integer(mean.day)`*** and ***`r median.day`***, respectively.
 ## What is the average daily activity pattern?
 
+**1. Make a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)**
+```{r}
+aggregated.daily.pattern <- aggregate(list(steps=data$steps),
+                                      list(interval = data$interval),mean,na.rm=TRUE)
+qplot(interval,steps,data=aggregated.daily.pattern,geom="line")
+```
 
+**2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?**
+
+```{r}
+max.interval.index <- which.max(aggregated.daily.pattern$steps)
+max.daily.interval <- aggregated.daily.pattern$interval[max.interval.index]
+```
+
+The 5-minute interval that contains the maximum number of steps is the 
+***`r max.interval.index`th*** element, with a value of 
+***`r max.daily.interval`***, that means 8:35 a.m. for the the activity daily 
+pattern.
 
 ## Imputing missing values
+Note that there are a number of days/intervals where there are missing
+values (coded as `NA`). The presence of missing days may introduce
+bias into some calculations or summaries of the data.
 
+**1. Calculate and report the total number of missing values in the dataset**
 
+```{r}
+na.indices <- which(is.na(data$steps))
+not.complete.cases <- length(na.indices)
+```
+All the missing values are in the *steps* column. The total number of missing 
+values is ***`r not.complete.cases`*** steps, i.e. there are 
+***`r not.complete.cases`*** rows in the data frame where we do not know the 
+number of steps that corresponding to such intervals.
+
+**2. Devise a strategy for filling in all of the missing values in the dataset.**
+
+I decided to put in each missing values the value that appears for the same 
+interval in the activity daily pattern. That is, I extract the values from the 
+average of all the 5 minute intervals across all the days.
+```{r}
+impute.missing.value <- function(x){
+        aggregated.daily.pattern$steps[aggregated.daily.pattern$interval == data$interval[x]]
+}
+```
+
+**3. Create a new dataset that is equal to the original dataset but with the missing data filled in.**
+
+```{r}
+data.with.imputed.missing.values <- data
+imputed <- sapply(na.indices, impute.missing.value)
+data.with.imputed.missing.values$steps[na.indices] <- imputed
+```
+
+**4. Make a histogram of the total number of steps taken each day and Calculate and report the *mean* and *median* total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?**
+
+```{r}
+dataAggregatedPerDay.imputed <- aggregate(list(steps=data.with.imputed.missing.values$steps),
+                                          list(day = data.with.imputed.missing.values$date),sum)
+qplot(steps, data=dataAggregatedPerDay.imputed, geom="histogram", binwidth=1000)
+```
+
+We can see that this new histogram is shifted (in the Y-axis) with respect to
+the histogram based on the original data frame. This is due to the fact of imputing
+new values for the missing values, increasing the number of overal steps in this way.
+
+```{r}
+mean.day.imputed <- mean(dataAggregatedPerDay.imputed$steps)
+median.day.imputed <- median(dataAggregatedPerDay.imputed$steps)
+```
+
+After making the appropriated calculations we can see that the mean and median 
+values when we work on the data frame with imputed missing values are 
+***`r as.integer(mean.day.imputed)`*** and ***`r median.day.imputed`***, 
+respectively. If we compare these values against the previous ones (those 
+without taking into account missing values), we see that mean values are 
+exactly equals whereas the median is a little bit different 
+(***`r median.day`*** for the original data frame and 
+***`r median.day.imputed`*** for the same data frame with the imputed missing 
+values). The closeness of the results is because we chose averaged data (for 
+5-minute interval), and so we keep quite well the mean and median measures.
+Concretely, if we compare in a single data frame how different are both data 
+frames (the original and the imputed ones):
+
+```{r showtable, results = "asis"}
+library(xtable)
+t1 <- merge(dataAggregatedPerDay,dataAggregatedPerDay.imputed, by=1)
+names(t1)<- c("Date","original.estimate","impute.estimate")
+print(xtable(t1), type="html")
+```
+
+We can see that all the values are exactly equal except for 8 days, where we do 
+not have any value. Thus, as there exist 24*12 = 288 5-minute intervals per day, 
+and we have 8 days as missing values, there should be 288*8=2304 missing values, 
+such as we saw in the original data frame.
+
+Since we impute complete days with the averaged steps for the daily activity 
+pattern, the global mean does not change, since we are dealing with averaged 
+data, and imputing or not imputing those values, it does not affect the daily 
+activity pattern (for this case where we impute complete days).
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+**1. Create a new factor variable in the dataset with two levels -- "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.**
+
+```{r}
+Sys.setlocale("LC_TIME", "en_US.utf8")
+dates <- as.Date(data.with.imputed.missing.values$date, format="%Y-%m-%d")
+dateWeekday <- weekdays(dates)
+weekendIndices <- which(dateWeekday %in% c("Saturday","Sunday"))
+data.with.imputed.missing.values$typeOfDay <- rep("weekday",
+                                                  length(data.with.imputed.missing.values))
+data.with.imputed.missing.values$typeOfDay[weekendIndices] <- rep("weekend",
+                                                                  length(weekendIndices))
+data.with.imputed.missing.values$typeOfDay <- as.factor(data.with.imputed.missing.values$typeOfDay)
+```
+
+**2. Make a panel plot containing a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).**
+
+```{r}
+aggregated.daily.pattern.weekdays <- aggregate(list(steps=data.with.imputed.missing.values$steps),
+                                               list(Day = data.with.imputed.missing.values$typeOfDay,interval = data.with.imputed.missing.values$interval),mean)
+qplot(interval,steps,data=aggregated.daily.pattern.weekdays,geom="line",facets=Day ~ .,colour=Day)
+```
+
+Based on a review of these two plots, even though the average maximum number of steps 
+in one interval occurs during the weekdays, there is an overall higher number steps taken in the aggregate over the weekend.
